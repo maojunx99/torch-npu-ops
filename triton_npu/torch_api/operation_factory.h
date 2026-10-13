@@ -16,7 +16,11 @@
 
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <memory>
+#include <mutex>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 
@@ -63,7 +67,8 @@ class OperationFactory final {
   }
 
   LayerNormFwdFastBF16Op& layer_norm_fwd_fast_bf16() {
-    return get_or_create<LayerNormFwdFastBF16Op>("layer_norm_fwd_kernel_fast_bf16");
+    return get_or_create<LayerNormFwdFastBF16Op>(
+        "layer_norm_fwd_kernel_fast_bf16");
   }
 
   LayerNormFwdFastRMSBF16BiasOp& layer_norm_fwd_fast_rms_bf16_bias() {
@@ -91,7 +96,8 @@ class OperationFactory final {
   }
 
   LayerNormFwdFastBF16ZOp& layer_norm_fwd_fast_bf16_z() {
-    return get_or_create<LayerNormFwdFastBF16ZOp>("layer_norm_fwd_kernel_fast_bf16_z");
+    return get_or_create<LayerNormFwdFastBF16ZOp>(
+        "layer_norm_fwd_kernel_fast_bf16_z");
   }
 
   LayerNormFwdFastRMSBF16ZBiasOp& layer_norm_fwd_fast_rms_bf16_z_bias() {
@@ -120,7 +126,8 @@ class OperationFactory final {
         "fused_recurrent_gated_delta_rule_spec_fwd_kernel");
   }
 
-  FusedSigmoidGatingDeltaRuleUpdateOp& fused_sigmoid_gating_delta_rule_update() {
+  FusedSigmoidGatingDeltaRuleUpdateOp&
+  fused_sigmoid_gating_delta_rule_update() {
     return get_or_create<FusedSigmoidGatingDeltaRuleUpdateOp>(
         "fused_sigmoid_gating_delta_rule_update_kernel");
   }
@@ -196,6 +203,35 @@ class OperationFactory final {
     return get_or_create_with_name<SplitRmsnormRopeOp>(kernel_name);
   }
 
+  JoyoV2Op& joyo_v2(const std::string& kernel_name) {
+    static constexpr std::array<std::string_view, 8> names{
+        "joyo_qk_half_prepare_b32_0_1",
+        "joyo_attention_finish_b64",
+        "joyo_rms_modulate_d6144",
+        "joyo_rms_gate_residual_d6144",
+        "joyo_rms_sandwich_d6144",
+        "joyo_ec_sum_reduce_f32_e48_b256_c48",
+        "joyo_expert_swiglu_d4096",
+        "joyo_moe_post_rms_d6144"};
+    CHECK(std::find(names.begin(), names.end(), kernel_name) != names.end());
+    std::lock_guard<std::mutex> lock(joyo_mutex_);
+    auto& operation = get_or_create_with_name<JoyoV2Op>(kernel_name);
+    auto& registry = KernelRegistry::get_instance();
+    if (!registry.is_kernel_registered(kernel_name)) {
+      const std::string path = resolve_npubin_path_by_kernel(kernel_name);
+      CHECK(!path.empty());
+      CHECK(registry.register_kernel(kernel_name, path));
+      int64_t workspace_size = -1;
+      int64_t lock_init_value = 0;
+      int64_t lock_num = -1;
+      CHECK(registry.get_kernel_workspace_config(
+          kernel_name, workspace_size, lock_init_value, lock_num));
+      CHECK_LE(workspace_size, 0);
+      CHECK_LE(lock_num, 0);
+    }
+    return operation;
+  }
+
  private:
   OperationFactory() = default;
 
@@ -227,6 +263,7 @@ class OperationFactory final {
     return raw[0];
   }
 
+  std::mutex joyo_mutex_;
   std::unordered_map<std::string, std::unique_ptr<OperationBase>> ops_;
 };
 

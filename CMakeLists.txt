@@ -85,7 +85,7 @@ cc_library(
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-file(GLOB_RECURSE TRITON_KERNEL_SOURCES
+file(GLOB_RECURSE TRITON_KERNEL_SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/triton_npu/triton_src/*.py"
 )
 

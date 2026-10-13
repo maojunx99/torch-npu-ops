@@ -96,7 +96,8 @@ class LayerNormFwdFastRMSZNoBiasOp final : public OperationBase {
 
 class LayerNormFwdFastBF16ZOp final : public OperationBase {
  public:
-  LayerNormFwdFastBF16ZOp() : OperationBase("layer_norm_fwd_kernel_fast_bf16_z") {}
+  LayerNormFwdFastBF16ZOp()
+      : OperationBase("layer_norm_fwd_kernel_fast_bf16_z") {}
 };
 
 class LayerNormFwdFastRMSBF16ZBiasOp final : public OperationBase {
@@ -149,8 +150,7 @@ class ChunkLocalCumsumScalarOp final : public OperationBase {
 
 class ChunkScaledDotKktFwdOp final : public OperationBase {
  public:
-  ChunkScaledDotKktFwdOp()
-      : OperationBase("chunk_scaled_dot_kkt_fwd_kernel") {}
+  ChunkScaledDotKktFwdOp() : OperationBase("chunk_scaled_dot_kkt_fwd_kernel") {}
 };
 
 class SolveTril16x16Op final : public OperationBase {
@@ -219,6 +219,12 @@ class FusedQkvzbaSplitReshapeGqaR4Op final : public OperationBase {
 class SplitRmsnormRopeOp final : public OperationBase {
  public:
   explicit SplitRmsnormRopeOp(std::string kernel_name)
+      : OperationBase(std::move(kernel_name)) {}
+};
+
+class JoyoV2Op final : public OperationBase {
+ public:
+  explicit JoyoV2Op(std::string kernel_name)
       : OperationBase(std::move(kernel_name)) {}
 };
 
