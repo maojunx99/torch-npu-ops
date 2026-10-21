@@ -53,10 +53,27 @@ cc_library(
     glog::glog
 )
 
+option(TRITON_USE_PREBUILT_JOYO "Use packaged Ascend910_9382 kernels" ON)
+if(TRITON_USE_PREBUILT_JOYO)
+  set(TRITON_BIN_PATH "${CMAKE_CURRENT_SOURCE_DIR}/triton_npu/prebuilt/Ascend910_9382")
+  file(READ "${TRITON_BIN_PATH}/kernel_sha256.json" JOYO_KERNEL_HASHES)
+  string(JSON JOYO_KERNEL_COUNT LENGTH "${JOYO_KERNEL_HASHES}")
+  math(EXPR JOYO_KERNEL_LAST "${JOYO_KERNEL_COUNT} - 1")
+  foreach(JOYO_INDEX RANGE 0 ${JOYO_KERNEL_LAST})
+    string(JSON JOYO_NAME MEMBER "${JOYO_KERNEL_HASHES}" ${JOYO_INDEX})
+    string(JSON JOYO_EXPECTED GET "${JOYO_KERNEL_HASHES}" "${JOYO_NAME}")
+    file(SHA256 "${TRITON_BIN_PATH}/${JOYO_NAME}" JOYO_ACTUAL)
+    if(NOT JOYO_ACTUAL STREQUAL JOYO_EXPECTED)
+      message(FATAL_ERROR "Invalid packaged Triton kernel: ${JOYO_NAME}")
+    endif()
+  endforeach()
+else()
 if(DEFINED ENV{TRITON_BINARY_PATH} AND NOT "$ENV{TRITON_BINARY_PATH}" STREQUAL "")
   set(TRITON_BIN_PATH "$ENV{TRITON_BINARY_PATH}")
 else()
   set(TRITON_BIN_PATH "${CMAKE_CURRENT_BINARY_DIR}/triton_npu/binary")
+endif()
+
 endif()
 
 message(STATUS "TRITON_BINARY_PATH = ${TRITON_BIN_PATH}")
@@ -85,12 +102,15 @@ cc_library(
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-file(GLOB_RECURSE TRITON_KERNEL_SOURCES
+file(GLOB_RECURSE TRITON_KERNEL_SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/triton_npu/triton_src/*.py"
 )
 
 set(TRITON_NPU_STAMP_FILE "${CMAKE_CURRENT_BINARY_DIR}/triton_npu_binaries.stamp")
 
+if(TRITON_USE_PREBUILT_JOYO)
+  add_custom_target(triton_npu_binaries)
+else()
 add_custom_command(
   OUTPUT ${TRITON_NPU_STAMP_FILE}
   COMMAND ${CMAKE_COMMAND} -E env
@@ -107,6 +127,8 @@ add_custom_command(
 add_custom_target(triton_npu_binaries
   DEPENDS ${TRITON_NPU_STAMP_FILE}
 )
+
+endif()
 
 add_dependencies(triton_adapter triton_npu_binaries)
 
