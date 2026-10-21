@@ -638,3 +638,76 @@ def joyo_moe_post_rms_d6144(
         gate_stride,
         48,
     )
+
+
+@triton.jit(do_not_specialize=["rows"])
+def _shared_swiglu_rows_d8192_wide(
+    X: tl.tensor, Y: tl.tensor, rows: tl.tensor
+) -> None:
+    # Use one 8192-element row per tile. Full 249908-row geometry exceeds
+    # the signed-INT32 input offset range at row131072 with stride16384.
+    columns = tl.arange(0, 8192)
+    local_rows = tl.arange(0, 1)
+    rows_per_core = tl.cdiv(rows, 48)
+    start = tl.program_id(0) * rows_per_core
+    for iteration in range(tl.cdiv(rows_per_core, 1)):
+        row = start + iteration * 1 + local_rows
+        active = (row < rows) & (row < start + rows_per_core)
+        row_offset = row.to(tl.int64)
+        source = row_offset[:, None] * (2 * 8192) + columns[None, :]
+        gate = tl.load(X + source, mask=active[:, None], other=0).to(tl.float32)
+        up = tl.load(X + source + 8192, mask=active[:, None], other=0).to(tl.float32)
+        silu = (gate * tl.sigmoid(gate)).to(tl.bfloat16).to(tl.float32)
+        output = row_offset[:, None] * 8192 + columns[None, :]
+        tl.store(Y + output, silu * up, mask=active[:, None])
+
+
+@triton.jit(do_not_specialize=["rows"])
+def joyo_shared_swiglu_d8192(X: tl.tensor, Y: tl.tensor, rows: tl.tensor) -> None:
+    _shared_swiglu_rows_d8192_wide(X, Y, rows)
+
+
+@triton.jit(
+    do_not_specialize=["elements"],
+    do_not_specialize_on_alignment=["IDS", "RAW_WEIGHTS"],
+)
+def joyo_ec_normalize_f32_b1024_c48(
+    IDS: tl.tensor,
+    RAW_WEIGHTS: tl.tensor,
+    SUMS: tl.tensor,
+    COUNTS: tl.tensor,
+    SQRT_COUNTS: tl.tensor,
+    OUTPUT: tl.tensor,
+    elements: tl.tensor,
+) -> None:
+    per_core = tl.cdiv(elements, 48)
+    start = tl.program_id(0) * per_core
+    lane = tl.arange(0, 1024)
+    for iteration in range(tl.cdiv(per_core, 1024)):
+        position = start + iteration * 1024 + lane
+        active = (position < elements) & (position < start + per_core)
+        token = tl.load(IDS + position, mask=active, other=0).to(tl.int32)
+        raw = tl.load(RAW_WEIGHTS + position, mask=active, other=0)
+        denominator = tl.load(SUMS + token, mask=active, other=1)
+        denominator = tl.maximum(denominator, 1.0e-9)
+        count = tl.load(COUNTS + token, mask=active, other=0).to(tl.int32)
+        factor = tl.load(SQRT_COUNTS + count)
+        # Keep FP32 division and multiplication separate. The factor table is
+        # produced once with the same native pow(0.5) as the reference chain.
+        normalized = raw / denominator
+        normalized = normalized * factor
+        tl.store(OUTPUT + position, normalized, mask=active)
+
+
+@triton.jit(do_not_specialize=["rows"])
+def joyo_ec_weight_unpermute_bf16_d6144(
+    X: tl.tensor, WEIGHTS: tl.tensor, MAPPING: tl.tensor, Y: tl.tensor, rows: tl.tensor
+) -> None:
+    columns = tl.arange(0, 8192)
+    active = columns < 6144
+    for row in range(tl.program_id(0), rows, 48):
+        expert_row = tl.load(MAPPING + row).to(tl.int64)
+        weight = _round_bf16(tl.load(WEIGHTS + row))
+        values = tl.load(X + expert_row * 6144 + columns, mask=active, other=0).to(tl.float32)
+        output_offset = row.to(tl.int64) * 6144 + columns
+        tl.store(Y + output_offset, _round_bf16(values * weight), mask=active)

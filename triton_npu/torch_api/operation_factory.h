@@ -204,7 +204,7 @@ class OperationFactory final {
   }
 
   JoyoV2Op& joyo_v2(const std::string& kernel_name) {
-    static constexpr std::array<std::string_view, 12> names{
+    static constexpr std::array<std::string_view, 15> names{
         "joyo_attention_finish_b64",
         "joyo_rms_modulate_d6144",
         "joyo_rms_gate_residual_d6144",
@@ -214,6 +214,9 @@ class OperationFactory final {
         "joyo_attention_ordered_reduce_dynamic_bf16_b2048_c48",
         "joyo_expert_swiglu_d4096",
         "joyo_shared_swiglu_d512",
+        "joyo_shared_swiglu_d8192",
+        "joyo_ec_normalize_f32_b1024_c48",
+        "joyo_ec_weight_unpermute_bf16_d6144",
         "joyo_moe_post_rms_d6144",
         "joyo_ec_owner_fused_table_bf16_b2048_c48",
         "joyo_ec_owner_fused_table_dynamic_bf16_b2048_c48",
