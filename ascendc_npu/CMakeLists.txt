@@ -18,3 +18,5 @@ cc_library(
 target_include_directories(ascendc_ops PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+add_subdirectory(joyo_qkv_frontend)

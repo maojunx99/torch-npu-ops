@@ -1,0 +1,8 @@
+{
+  "architecture": "aarch64",
+  "soc": "Ascend910_9382",
+  "cann": "9.0.0",
+  "library": "ascend910_9382/libjoyo_qkv_frontend.so",
+  "sha256": "5d08a893a3cbf890e395173bf83a4fa1ae4139a87fab77888d0590b4716e1fd6",
+  "abi": "joyo_qkv_frontend_prepare_shift"
+}
