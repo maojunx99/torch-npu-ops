@@ -711,3 +711,126 @@ def joyo_ec_weight_unpermute_bf16_d6144(
         values = tl.load(X + expert_row * 6144 + columns, mask=active, other=0).to(tl.float32)
         output_offset = row.to(tl.int64) * 6144 + columns
         tl.store(Y + output_offset, _round_bf16(values * weight), mask=active)
+
+
+@triton.jit(do_not_specialize=["rows", "cores"])
+def _rms_plain_tiled(X, RESIDUAL, W, NEXT_W, H, Y, rows, cores,
+                     KIND: tl.constexpr):
+    # Preserve the qualified 6144-wide FP32 reduction and staged BF16 casts.
+    column = tl.arange(0, 2048)
+    rows_per_core = tl.cdiv(rows, cores)
+    start = tl.program_id(0) * rows_per_core
+    w0 = tl.load(W + column)
+    w1 = tl.load(W + column + 2048)
+    w2 = tl.load(W + column + 4096)
+    for offset in range(rows_per_core):
+        row = start + offset
+        active = row < rows
+        position = row.to(tl.int64) * 6144 + column
+        a = tl.load(X + position, mask=active, other=0).to(tl.float32)[None, :]
+        b = tl.load(X + position + 2048, mask=active, other=0).to(tl.float32)[None, :]
+        c = tl.load(X + position + 4096, mask=active, other=0).to(tl.float32)[None, :]
+        inverse = _inverse(a, b, c)
+        a = _normalized(a, w0, inverse)
+        b = _normalized(b, w1, inverse)
+        c = _normalized(c, w2, inverse)
+        if KIND != 0:
+            a = (a + tl.load(RESIDUAL + position, mask=active, other=0).to(tl.float32)[None, :]).to(tl.bfloat16).to(tl.float32)
+            b = (b + tl.load(RESIDUAL + position + 2048, mask=active, other=0).to(tl.float32)[None, :]).to(tl.bfloat16).to(tl.float32)
+            c = (c + tl.load(RESIDUAL + position + 4096, mask=active, other=0).to(tl.float32)[None, :]).to(tl.bfloat16).to(tl.float32)
+        if KIND == 2:
+            tl.store(H + position, tl.reshape(a, (2048,)), mask=active)
+            tl.store(H + position + 2048, tl.reshape(b, (2048,)), mask=active)
+            tl.store(H + position + 4096, tl.reshape(c, (2048,)), mask=active)
+            inverse = _inverse(a, b, c)
+            a = _normalized(a, tl.load(NEXT_W + column), inverse)
+            b = _normalized(b, tl.load(NEXT_W + column + 2048), inverse)
+            c = _normalized(c, tl.load(NEXT_W + column + 4096), inverse)
+        tl.store(Y + position, tl.reshape(a, (2048,)), mask=active)
+        tl.store(Y + position + 2048, tl.reshape(b, (2048,)), mask=active)
+        tl.store(Y + position + 4096, tl.reshape(c, (2048,)), mask=active)
+
+
+@triton.jit(do_not_specialize=["rows", "first_stride", "second_stride", "third_stride", "cores"])
+def joyo_rms_plain_d6144(X: tl.tensor, RESIDUAL: tl.tensor, W: tl.tensor, NEXT_W: tl.tensor,
+    FIRST: tl.tensor, SECOND: tl.tensor, THIRD: tl.tensor, IDS: tl.tensor,
+    H: tl.tensor, Y: tl.tensor, rows: tl.tensor, first_stride: tl.tensor,
+    second_stride: tl.tensor, third_stride: tl.tensor, cores: tl.tensor) -> None:
+    _rms_plain_tiled(X, RESIDUAL, W, NEXT_W, H, Y, rows, cores, 0)
+
+
+@triton.jit(do_not_specialize=["rows", "first_stride", "second_stride", "third_stride", "cores"])
+def joyo_rms_residual_d6144(X: tl.tensor, RESIDUAL: tl.tensor, W: tl.tensor, NEXT_W: tl.tensor,
+    FIRST: tl.tensor, SECOND: tl.tensor, THIRD: tl.tensor, IDS: tl.tensor,
+    H: tl.tensor, Y: tl.tensor, rows: tl.tensor, first_stride: tl.tensor,
+    second_stride: tl.tensor, third_stride: tl.tensor, cores: tl.tensor) -> None:
+    _rms_plain_tiled(X, RESIDUAL, W, NEXT_W, H, Y, rows, cores, 1)
+
+
+@triton.jit(do_not_specialize=["rows", "first_stride", "second_stride", "third_stride", "cores"])
+def joyo_rms_residual_rms_d6144(X: tl.tensor, RESIDUAL: tl.tensor, W: tl.tensor, NEXT_W: tl.tensor,
+    FIRST: tl.tensor, SECOND: tl.tensor, THIRD: tl.tensor, IDS: tl.tensor,
+    H: tl.tensor, Y: tl.tensor, rows: tl.tensor, first_stride: tl.tensor,
+    second_stride: tl.tensor, third_stride: tl.tensor, cores: tl.tensor) -> None:
+    _rms_plain_tiled(X, RESIDUAL, W, NEXT_W, H, Y, rows, cores, 2)
+
+
+@triton.jit(do_not_specialize=['first','rows','local_rows','capacity'])
+def joyo_ec_owner_mask_thresholds_f32_c48(VALUES,IDS,KEPT,START,END,MASK,TAU,TIE,first,
+                              rows,local_rows,capacity):
+    expert=tl.program_id(0);tile=tl.program_id(1)
+    column=tile*1024+tl.arange(0,1024);valid=column<capacity
+    source=tl.load(KEPT+column,valid,other=0).to(tl.int32)
+    token=tl.load(IDS+expert*rows+source,valid,other=-1).to(tl.int32)
+    owned=(token>=first)&(token<tl.minimum(first+local_rows,rows))
+    tl.store(MASK+expert*capacity+column,owned,valid)
+    if tile==0:
+        for segment in range(2):
+            start=tl.load(START+segment);end=tl.load(END+segment)
+            cutoff=tl.load(VALUES+expert*rows+tl.maximum(end-1,0))
+            next_column=tl.minimum(end,rows-1)
+            next_value=tl.load(VALUES+expert*rows+next_column)
+            next_token=tl.load(IDS+expert*rows+next_column).to(tl.int32)
+            cutoff_token=tl.where((next_value==cutoff)&(end<rows),next_token,2147483647)
+            tl.store(TAU+segment*48+expert,tl.where(end>start,cutoff,float('inf')))
+            tl.store(TIE+segment*48+expert,tl.where(end>start,cutoff_token,0))
+
+@triton.jit(do_not_specialize=['first','elements','rows','capacity','BLOCKS'])
+def joyo_ec_owner_map_f32_b256_c48(GATE,IDS,KEPT,POSITIONS,LOCAL_IDS,RAW,METADATA,
+                               BLOCK_COUNTS,first,elements,rows,capacity,BLOCKS):
+    block=tl.program_id(0);position=block*256+tl.arange(0,256)
+    active=position<elements
+    origin=tl.load(POSITIONS+position,active,other=0).to(tl.int32)
+    expert=origin//capacity;slot=origin%capacity
+    column=tl.load(KEPT+slot,active,other=0).to(tl.int32)
+    token=tl.load(IDS+expert*rows+column,active,other=0).to(tl.int32)
+    raw=tl.load(GATE+token*48+expert,active,other=0.0)
+    tl.store(LOCAL_IDS+position,(token-first).to(tl.int64),active)
+    tl.store(RAW+position,raw,active)
+    tl.store(METADATA+position*2,(expert%3).to(tl.int64),active)
+    tl.store(METADATA+position*2+1,slot.to(tl.int64),active)
+    destination=expert//3
+    for rank in range(16):
+        count=tl.sum((active&(destination==rank)).to(tl.int32),0)
+        tl.store(BLOCK_COUNTS+rank*BLOCKS+block,count)
+
+@triton.jit(do_not_specialize=["rows","first","valid"])
+def joyo_ec_owner_statistics_f32_b64_c48(GATE, TAU, TIE, SID, SUMS, COUNTS,
+                     rows, first, valid):
+    token = tl.program_id(0) * 64 + tl.arange(0, 64)
+    active = (token < rows) & (first + token < valid)
+    global_token = first + token
+    sample = tl.load(SID + global_token, active, other=0)
+    total = tl.full((64,), 0.0, tl.float32)
+    count = tl.full((64,), 0.0, tl.float32)
+    # Same ascending expert order and FP32 add boundaries as _sum.
+    for expert in range(48):
+        gate = tl.load(GATE + global_token * 48 + expert, active, other=0.0)
+        tau = tl.load(TAU + sample * 48 + expert, active, other=float('inf'))
+        tie = tl.load(TIE + sample * 48 + expert, active, other=0)
+        key = gate - sample.to(tl.float32) * 2.0
+        selected = (key > tau) | ((key == tau) & (global_token < tie))
+        total = total + tl.where(selected & active, gate, 0.0)
+        count = count + (selected & active).to(tl.float32)
+    tl.store(SUMS + token, total, token < rows)
+    tl.store(COUNTS + token, count, token < rows)
