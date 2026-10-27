@@ -1,0 +1,109 @@
+{
+  "LaserAttention": {
+    "dynamicRankSupport": true,
+    "simplifiedKeyMode": 0,
+    "optionalInputMode": "gen_placeholder",
+    "optionalOutputMode": "gen_placeholder",
+    "params": {
+      "inputs": [
+        {
+          "name": "query",
+          "index": 0,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "key",
+          "index": 1,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "value",
+          "index": 2,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "atten_mask",
+          "index": 3,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "alibi_mask",
+          "index": 4,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "drop_mask",
+          "index": 5,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "softmax_log_max_sum",
+          "index": 0,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "attention_out",
+          "index": 1,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "scale_value"
+        },
+        {
+          "name": "head_num"
+        },
+        {
+          "name": "input_layout"
+        },
+        {
+          "name": "keep_prob"
+        },
+        {
+          "name": "pre_tokens"
+        },
+        {
+          "name": "next_tokens"
+        },
+        {
+          "name": "is_highPrecision"
+        }
+      ]
+    },
+    "binaryList": [
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "LaserAttention/d=0,p=1/27,2/27,2/1,2/0,2/27,2",
+          "LaserAttention/d=0,p=0/27,2/27,2/1,2/0,2/27,2",
+          "LaserAttention/d=1,p=1/27,2/27,2/1,2/0,2/27,2",
+          "LaserAttention/d=1,p=0/27,2/27,2/1,2/0,2/27,2"
+        ],
+        "binPath": "ascend910_93/laser_attention/LaserAttention_e5112a1f6036d948f85f69f52f575284.o",
+        "jsonPath": "ascend910_93/laser_attention/LaserAttention_e5112a1f6036d948f85f69f52f575284.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "LaserAttention/d=0,p=1/1,2/1,2/1,2/0,2/0,2",
+          "LaserAttention/d=0,p=0/1,2/1,2/1,2/0,2/0,2",
+          "LaserAttention/d=1,p=1/1,2/1,2/1,2/0,2/0,2",
+          "LaserAttention/d=1,p=0/1,2/1,2/1,2/0,2/0,2"
+        ],
+        "binPath": "ascend910_93/laser_attention/LaserAttention_fe30aa46d117f05be6a29f1fd8cbf05d.o",
+        "jsonPath": "ascend910_93/laser_attention/LaserAttention_fe30aa46d117f05be6a29f1fd8cbf05d.json"
+      }
+    ]
+  }
+}

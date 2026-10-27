@@ -22,3 +22,5 @@ target_include_directories(ascendc_ops PUBLIC
 add_subdirectory(joyo_qkv_frontend)
 
 add_subdirectory(joyo_expert_bmm)
+
+add_subdirectory(laser_attention)
