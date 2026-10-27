@@ -1,5 +1,5 @@
 {
   "library": "ascend910_9382/libnative_order_bmm.so",
-  "sha256": "05a6878e86a78f4338281381bfd4eb14de118290792d229b054b749d72e158e7",
-  "source_sha256": "a7094566740f9f9d8460c16cbd007a8c84314151dc9a2bd1ead3e5d28ee37fc5"
+  "sha256": "f9a978fa099612c4bcc43f472d8b4096a63bedb0b47abf91a52aa0fc0c6c15cc",
+  "source_sha256": "1fc7a22537f565efff6109a3c6f71a8e4611c10cb6dc8e6d892fca4d18cac6ab"
 }
