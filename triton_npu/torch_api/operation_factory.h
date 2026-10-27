@@ -204,28 +204,19 @@ class OperationFactory final {
   }
 
   JoyoV2Op& joyo_v2(const std::string& kernel_name) {
-    static constexpr std::array<std::string_view, 21> names{
+    static constexpr std::array<std::string_view, 12> names{
         "joyo_ec_owner_mask_thresholds_f32_c48",
         "joyo_ec_owner_statistics_f32_b64_c48",
         "joyo_ec_owner_map_f32_b256_c48",
-        "joyo_attention_finish_b64",
         "joyo_rms_modulate_d6144",
         "joyo_rms_gate_residual_d6144",
         "joyo_rms_sandwich_d6144",
         "joyo_rms_plain_d6144",
         "joyo_rms_residual_d6144",
         "joyo_rms_residual_rms_d6144",
-        "joyo_ec_sum_reduce_f32_e48_b256_c48",
-        "joyo_attention_ordered_reduce_bf16_b2048_c48",
-        "joyo_attention_ordered_reduce_dynamic_bf16_b2048_c48",
         "joyo_expert_swiglu_d4096",
-        "joyo_shared_swiglu_d512",
         "joyo_shared_swiglu_d8192",
         "joyo_ec_normalize_f32_b1024_c48",
-        "joyo_ec_weight_unpermute_bf16_d6144",
-        "joyo_moe_post_rms_d6144",
-        "joyo_ec_owner_fused_table_bf16_b2048_c48",
-        "joyo_ec_owner_fused_table_dynamic_bf16_b2048_c48",
     };
     CHECK(std::find(names.begin(), names.end(), kernel_name) != names.end());
     std::lock_guard<std::mutex> lock(joyo_mutex_);
